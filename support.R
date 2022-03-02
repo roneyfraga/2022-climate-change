@@ -50,5 +50,36 @@ query[1:12] |>
     purrr::map(tibble::as_tibble) ->
     afiliacao
 
+M |>
+    dplyr::select(TI, DI, AU, SR) |>
+    dplyr::mutate(id = 1:n()) |> 
+    dplyr::slice(1:12) ->
+    M2
+
+names(afiliacao) <- M2$id
+
+# estou aqui
+purrr::compact(afiliacao) |>
+    purrr::map(janitor::clean_names) ->
+    afiliacao
+
+res <- vector(mode = 'list', length = length(afiliacao)) 
+
+for (i in seq_along(afiliacao)) {
+    afiliacao[[i]] |> 
+        dplyr::pull(affiliation_country) ->
+        res[[i]]
+}
+
+res
+
+temp2 <- lapply(res, function(x) {expand.grid.unique(x, x, include.equals = F)})
+
+temp2 %>>%
+    (bind_rows(.)) %>>%
+    (aggregate(list(weight = rep(1, nrow(.))), ., length)) %>>%
+    (arrange(., - weight)) %>>%
+    (as_tibble(.) -> ide)
+
 
 
