@@ -120,3 +120,116 @@ textcleaner_lda <- function(x) {
     return(as.data.frame(x))
 }
 
+rscopusAuthors <- function(x){
+
+    articles <- x
+
+    Author <- vector("list", length(articles$entries))
+    nomes <- vector("list", length(articles$entries))
+
+    empty_list <- lapply(articles$entries,names) %>>% (unlist(.)) 
+
+    if( length(empty_list) > 3){ 
+
+        for(k in seq_along(articles$entries)){
+
+            nomes[[k]] <- names(articles$entries[[k]]) %>>% (unlist(.))
+
+            if( any( nomes[[k]] == 'author' )){
+
+                articles$entries[[k]]$author %>>% 
+                    list.select(authname,`given-name`,surname,initials,authid) %>>% 
+                    list.stack %>>% 
+                    dplyr::mutate(entries = k) %>>% 
+                    (. -> Author[[k]])
+            }
+        }
+        Author %>>% list.stack(fill=TRUE)
+    }
+}
+
+
+rscopusAffiliation <- function(x){
+
+    articles <- x
+
+    Aff <- vector("list", length(articles$entries))
+
+    empty_list <- lapply(articles$entries,names) %>>% (unlist(.)) 
+
+    if( length(empty_list) > 3){ 
+
+        nomes <- lapply(articles$entries,names) %>>% (unlist(.))
+
+        if( any( nomes == 'affiliation' )){
+
+            for(i in seq_along(articles$entries)){
+
+                articles$entries[[i]]$affiliation %>>% 
+                    list.select(affilname, afid, `affiliation-country`,`affiliation-city`) %>>% 
+                    list.stack %>>% 
+                    dplyr::mutate(entries = i) %>>% 
+                    (. -> Aff[[i]])
+            }
+            Aff %>>% list.stack(fill=TRUE)
+        }
+    }
+}
+
+
+rscopusAutInsArt <- function(x){
+
+    articles <- x
+
+    AutInsArt <- list()
+
+    nomes <- vector("list", length(articles$entries))
+
+    empty_list <- lapply(articles$entries,names) %>>% (unlist(.)) 
+
+    if( length(empty_list) > 3){ 
+
+            for(i in seq_along(articles$entries)){
+
+                nomes[[i]] <- names(articles$entries[[i]]) %>>% (unlist(.))
+
+                if( any( nomes[[i]] == 'author' )){
+
+                    for(k in seq_along(articles$entries[[i]]$author)){
+
+                        nomes2 <- names(articles$entries[[i]]$author[[k]])
+
+                        if( any( nomes2 == 'afid' ) ){
+
+                            articles$entries[[i]]$author[[k]]$afid %>>% 
+                                list.select(`$`) %>>% 
+                                list.stack %>>% 
+                                dplyr::mutate(authid= articles$entries[[i]]$author[[k]]$authid) %>>% 
+                                dplyr::mutate(entries = i) %>>% 
+                                (. -> AutInsArt[[k]])
+
+                            if(any ( nomes[[i]] == 'prism:doi')){
+                                AutInsArt[[k]]$doi <- as.character(articles$entries[[i]]$`prism:doi`)
+                            }else{
+                                AutInsArt[[k]]$doi <- NA
+                            }
+
+                            if(any ( nomes[[i]] == 'dc:title')){
+                                AutInsArt[[k]]$title <- as.character(articles$entries[[i]]$`dc:title`)
+                            }else{
+                                AutInsArt[[k]]$title <- NA
+                            }
+
+                            if(any ( nomes[[i]] == 'prism:issn')){
+                                AutInsArt[[k]]$issn <- as.character(articles$entries[[i]]$`prism:issn`)
+                            }else{
+                                AutInsArt[[k]]$issn <- NA
+                            }
+                        }
+                    }
+            }
+        }
+            AutInsArt %>>% bind_rows  %>>% bind_rows %>>% distinct
+    }
+}
+

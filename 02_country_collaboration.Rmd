@@ -1,0 +1,112 @@
+
+
+# Código Bruno
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(bibliometrix)
+library(igraph)
+
+setwd('/Arquivos/Documentos/Pesquisa/Jaim e Roney - Climate change and agriculture/2022')
+
+source('utils.R')
+
+dados_adapt <- convert2df(file = c("bibs/adaptation_scopus1.bib", 
+                         "bibs/adaptation_scopus2.bib", 
+                         "bibs/adaptation_scopus3.bib", 
+                         "bibs/adaptation_scopus4.bib", 
+                         "bibs/adaptation_scopus5.bib"), 
+                dbsource = "scopus", format = "bibtex")
+
+#Nome e conteúdo das colunas. Algo entre str, names e summary
+glimpse(dados_adapt)
+
+#Gera resumo bibliométrico 
+res_adapt=biblioAnalysis(dados_adapt) 
+plot(res_adapt,k=20)
+summary(res_adapt,k=30)
+
+
+#Criar rede de colaboração entre países
+md_adapt=metaTagExtraction(dados_adapt, Field="AU_CO",sep=";")
+colab_adapt=cocMatrix(md_adapt,Field = "AU_CO",sep=";")
+colab_adapt2=Matrix::crossprod(colab_adapt,colab_adapt)
+
+#Criar rede a partir da matriz de adjacência (igraph)
+colab_adapt_net=graph_from_adjacency_matrix(colab_adapt2, mode = "undirected", weighted = T)
+
+#Simplificar a rede 
+colab_adapt_net=simplify(colab_adapt_net,remove.multiple = T, remove.loops = T)
+
+md_adapt[1:10, 'C1']
+
+#Colaborações mais frequentes
+colab_adapt_freq=get.data.frame(colab_adapt_net,what='edges')
+
+
+
+#Insetir medidas de centralidade no grafo
+V(colab_adapt_net)$degree=degree(colab_adapt_net)
+V(colab_adapt_net)$betweenness=betweenness(colab_adapt_net)
+V(colab_adapt_net)$closeness=closeness(colab_adapt_net)
+
+
+#Selecionar sommente os 50 principais vértices para plotagem
+#Comando do pacote utils do roney
+#colab_adapt_net_2=select.n.vertices(colab_adapt_net,n=100)
+#colab_adapt_net_2=colab_adapt_net
+
+#Escolher um dos layouts abaixo
+#l <- layout_with_lgl(colab_adapt_net_2) # bom
+#l <- layout_with_kk(colab_adapt_net_2) 
+#l <- layout_with_graphopt(netcolaut2)  # bom
+#l <- layout_nicely(colabconet2) # bom
+#l <- layout_with_fr(netcolaut2) # bom
+#l <- layout_with_drl(netcolaut2)
+#l <- layout_with_gem(netcolaut2)
+#l <- layout_with_dh(netcolaut2) # LENTO
+#l <- layout_randomly(netcolaut2) 
+#l <- layout_on_sphere(colabconet2) 
+#l <- layout.auto(netcolaut2) 
+#l <- layout.circle(netcolaut2) 
+#l <- layout.davidson.harel(netcolaut2) # LENTO
+#l <- layout_on_grid(netcolaut2) 
+#l <- layout_as_star(netcolaut2) 
+l <- layout.fruchterman.reingold(colab_adapt_net_2) 
+
+
+
+r=cluster_fast_greedy(colab_adapt_net_2)
+
+modularity(r)
+
+#modularity matrix
+B = modularity_matrix(colab_adapt_net_2, membership(r))
+round(B[1,],2)
+
+# memberships of nodes
+membership(r)
+
+# number of communities
+length(r)
+
+# size of communities
+sizes(r)
+
+# crossing edges
+crossing(r, colab_adapt_net_2)
+
+# plot communities with shaded regions
+plot(r, colab_adapt_net_2, layout=l)
+
+# plot communities without shaded regions
+plot(colab_adapt_net_2, vertex.color=membership(r), layout=l)
+
+# plot dendogram
+plot_dendrogram(r)
+
+
+```
+
