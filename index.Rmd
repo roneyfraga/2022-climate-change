@@ -60,6 +60,10 @@ library(caiporar)
 library(birddog)
 library(tictoc)
 
+# adress scopus api
+library(rlist)
+library(rscopus)
+
 # dealing with text
 library(textclean)
 library(tm)

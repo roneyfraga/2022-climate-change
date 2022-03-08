@@ -1,85 +1,80 @@
 
-source('utils.R')
-library(pipeR)
-library(rlist)
-library(rscopus)
-
-# existe API
-rscopus::have_api_key()
+#######################
+#######################
 
 rio::import('rawfiles/M_adaptation.rds') |>
     tibble::as_tibble() ->
     M
 
-# ----------
-## testar busca no Scopus
-M[10, ] |> dplyr::pull(TI) 
+load('rawfiles/afiliacao.RData')
 
-Query <- "TITLE ('ASSESSMENT OF SMALLHOLDER FARMERS ADAPTIVE CAPACITY TO CLIMATE CHANGE : USE OF A MIXED WEIGHTING SCHEME')  AND  (LIMIT-TO ( DOCTYPE , 'ar')  OR  LIMIT-TO ( DOCTYPE ,  're' ))"
+afiliacao |> head()
 
-scopus_search(query = Query, 
-              view = "COMPLETE", 
-              count = 200) ->
-    x
+# retirar NULL e padronizar nomes das variáveis
+afiliacao |>
+    purrr::compact() |> 
+    purrr::map(janitor::clean_names) ->
+    aff
 
-rscopusAffiliation(x)
-rscopusAutInsArt(x)
-rscopusAuthors(x)
-# ----------
+aff |>
+    purrr::map(~ .x |> dplyr::pull(affiliation_country)) ->
+    res
 
-## busca real
+# combinações de países no mesmo artigo
+lapply(res, function(x) {expand.grid.unique(x, x, include.equals = F)}) ->
+    temp
 
-p1 <- "( TITLE ( '"
-p2 <- "' )  OR  DOI ("
-p3 <- ") )"
+temp |>
+    dplyr::bind_rows() |>
+    tibble::as_tibble() ->
+    ide
 
-M |> 
-    dplyr::select(TI, DI) |>
-    dplyr::mutate(query = paste0(p1, TI, p2, DI, p3)) |>
-    dplyr::pull(query) ->
-    query
+c(ide$V1, ide$V2) |> 
+    unique() |>
+    sort() ->
+    idv
 
-my_scopus_search <- function(x) { 
-    rscopus::scopus_search(query = x, view = "COMPLETE", count = 200) 
-}
+ide |>
+    dplyr::filter(!is.na(V1)) |>
+    dplyr::filter(!is.na(V2)) ->
+    ide2
 
-query[1:12] |>
-    purrr::map(purrr::safely(my_scopus_search)) |>
-    purrr::map(purrr::pluck, 'result') |>
-    purrr::map(rscopusAffiliation) |>
-    purrr::map(tibble::as_tibble) ->
-    afiliacao
+# criar uma rede, com pesos, normalizando A -> e B -> A com adição nos pesos
+graph.data.frame(ide2, directed = FALSE, vertices = idv) |> 
+    {\(x) graph.adjacency(get.adjacency(x), weighted = TRUE)}() |>
+    {\(x) simplify(x, remove.multiple = T, edge.attr.comb = list(weight = 'sum'))}() |>
+    tidygraph::as_tbl_graph() -> 
+    net
+
+# ---------
+## encontrar quantidade de artigos com ao menos um autor de cada país
+M |>
+    dplyr::pull(C1) |> 
+    {\(x) length(grep('Brazil', x, ignore.case = T))}() 
 
 M |>
-    dplyr::select(TI, DI, AU, SR) |>
-    dplyr::mutate(id = 1:n()) |> 
-    dplyr::slice(1:12) ->
-    M2
+    dplyr::pull(C1) -> 
+    endereco
 
-names(afiliacao) <- M2$id
+idv |>
+    purrr::map_int(function(x) length(grep(x, endereco, ignore.case = T))) |>
+    {\(x) tibble::tibble('name' = idv, 'autores' = x)}() ->
+    idv2
 
-# estou aqui
-purrr::compact(afiliacao) |>
-    purrr::map(janitor::clean_names) ->
-    afiliacao
+# ---------
 
-res <- vector(mode = 'list', length = length(afiliacao)) 
+net |>
+    tidygraph::activate(nodes) |>
+    dplyr::left_join(idv2) |>
+    dplyr::arrange(desc(autores)) -> 
+    net2
 
-for (i in seq_along(afiliacao)) {
-    afiliacao[[i]] |> 
-        dplyr::pull(affiliation_country) ->
-        res[[i]]
-}
+eb <- igraph::cluster_louvain(as.undirected(net2))
 
-res
-
-temp2 <- lapply(res, function(x) {expand.grid.unique(x, x, include.equals = F)})
-
-temp2 %>>%
-    (bind_rows(.)) %>>%
-    (aggregate(list(weight = rep(1, nrow(.))), ., length)) %>>%
-    (arrange(., - weight)) %>>%
-    (as_tibble(.) -> ide)
-
+# exportar para o vosviewer
+V(net2)$id <- V(net2)$name
+igraph::write_graph(net2, file = 'networks/net2.net', format = c("pajek"))
+writePajek(eb$membership, 'networks/net2_cluster.clu')
+writePajek(V(net2)$autores, 'networks/net2.vec')
 
 
